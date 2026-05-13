@@ -8,18 +8,60 @@ from models.domain import ParsedPreferences, Place
 from services.google_places import search_places, GooglePlacesError
 
 
-INTEREST_QUERY_TEMPLATES = {
-    "food": "{veg}restaurants in {city}",
-    "music": "live music venues and pubs with music in {city}",
-    "walks": "parks, lakes and walking trails in {city}",
-    "art": "art galleries and museums in {city}",
-    "shopping": "shopping streets and markets in {city}",
-    "coffee": "specialty coffee shops and cafes in {city}",
-    "books": "bookstores and reading cafes in {city}",
-    "movies": "cinemas and indie theatres in {city}",
-    "nature": "gardens and nature spots in {city}",
-    "nightlife": "rooftop bars and nightlife in {city}",
+# Per-stop budget thresholds (total budget / estimated stops)
+BUDGET_LOW      = 500    # under ₹500/stop  → budget-friendly queries
+BUDGET_MEDIUM   = 1500   # ₹500–1500/stop   → default queries
+BUDGET_HIGH     = 1500   # above ₹1500/stop → premium queries
+
+# Three tiers of query templates: budget / default / premium
+INTEREST_QUERIES: dict[str, tuple[str, str, str]] = {
+    # interest: (budget_query, default_query, premium_query)
+    "food":      ("{veg}budget restaurants in {city}",
+                  "{veg}restaurants in {city}",
+                  "{veg}fine dining restaurants in {city}"),
+    "music":     ("live music bars in {city}",
+                  "live music venues and pubs in {city}",
+                  "best live music and jazz clubs in {city}"),
+    "walks":     ("parks and free walking spots in {city}",
+                  "parks, lakes and walking trails in {city}",
+                  "scenic parks and nature walks in {city}"),
+    "art":       ("free art galleries and museums in {city}",
+                  "art galleries and museums in {city}",
+                  "best art galleries and cultural centres in {city}"),
+    "shopping":  ("budget markets and street shopping in {city}",
+                  "shopping streets and markets in {city}",
+                  "upscale malls and boutique shopping in {city}"),
+    "coffee":    ("local cafes and coffee shops in {city}",
+                  "specialty coffee shops and cafes in {city}",
+                  "best specialty third wave coffee in {city}"),
+    "books":     ("second hand bookstores in {city}",
+                  "bookstores and reading cafes in {city}",
+                  "best bookstores and literary cafes in {city}"),
+    "movies":    ("cinemas in {city}",
+                  "cinemas and indie theatres in {city}",
+                  "premium cinemas and IMAX in {city}"),
+    "nature":    ("gardens and free nature spots in {city}",
+                  "gardens and nature spots in {city}",
+                  "best botanical gardens and scenic nature in {city}"),
+    "nightlife": ("bars and pubs in {city}",
+                  "rooftop bars and nightlife in {city}",
+                  "best rooftop bars and premium nightlife in {city}"),
 }
+
+
+def _per_stop_budget(prefs: ParsedPreferences) -> float:
+    stops = max(2, int(prefs.hours_available // 1.5))
+    return prefs.budget / stops
+
+
+def _query_tier(prefs: ParsedPreferences) -> int:
+    """Return 0=budget, 1=default, 2=premium based on per-stop budget."""
+    per_stop = _per_stop_budget(prefs)
+    if per_stop < BUDGET_LOW:
+        return 0
+    if per_stop < BUDGET_HIGH:
+        return 1
+    return 2
 
 
 def _build_queries(prefs: ParsedPreferences) -> list[str]:
@@ -27,15 +69,20 @@ def _build_queries(prefs: ParsedPreferences) -> list[str]:
     if any("veg" in c for c in prefs.constraints):
         veg_prefix = "vegetarian "
 
+    tier = _query_tier(prefs)
     queries: list[str] = []
+
     for interest in prefs.interests:
-        template = INTEREST_QUERY_TEMPLATES.get(interest)
-        if not template:
+        templates = INTEREST_QUERIES.get(interest)
+        if templates:
+            template = templates[tier]
+        else:
             template = "{veg}" + interest + " spots in {city}"
         queries.append(template.format(veg=veg_prefix, city=prefs.city))
 
     if "food" not in prefs.interests:
-        queries.append(f"{veg_prefix}restaurants in {prefs.city}")
+        food_templates = INTEREST_QUERIES["food"]
+        queries.append(food_templates[tier].format(veg=veg_prefix, city=prefs.city))
 
     return queries
 
@@ -45,9 +92,9 @@ def _estimate_cost(price_level: int | None, place_types: list[str]) -> float:
     if price_level is None:
         if any(t in {"park", "tourist_attraction", "museum"} for t in place_types):
             return 0.0
-        return 400.0
-    cost_table = {0: 0.0, 1: 250.0, 2: 600.0, 3: 1200.0, 4: 2500.0}
-    return cost_table.get(price_level, 600.0)
+        return 500.0
+    cost_table = {0: 0.0, 1: 300.0, 2: 700.0, 3: 1800.0, 4: 4000.0}
+    return cost_table.get(price_level, 700.0)
 
 
 def _fallback_places(prefs: ParsedPreferences) -> list[Place]:

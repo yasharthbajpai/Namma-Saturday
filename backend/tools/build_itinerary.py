@@ -25,8 +25,10 @@ SYSTEM_PROMPT = (
 )
 
 
-USER_PROMPT_TEMPLATE = """BUDGET CONSTRAINT: The sum of all estimated_cost values MUST NOT exceed ₹{budget}.
-Pick fewer stops or cheaper options if needed. Do not go over.
+USER_PROMPT_TEMPLATE = """BUDGET: ₹{budget} total for the day. The sum of all estimated_cost values MUST NOT exceed this.
+Match the experience quality to the budget — a ₹500 budget calls for free parks and street food;
+a ₹5000+ budget warrants good restaurants, ticketed venues, and premium experiences.
+Do not default to cheap options just because they exist. Use the budget well.
 
 User preferences:
 - City: {city}
