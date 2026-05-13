@@ -37,7 +37,7 @@ def _build_queries(prefs: ParsedPreferences) -> list[str]:
     if "food" not in prefs.interests:
         queries.append(f"{veg_prefix}restaurants in {prefs.city}")
 
-    return queries[:4]
+    return queries
 
 
 def _estimate_cost(price_level: int | None, place_types: list[str]) -> float:

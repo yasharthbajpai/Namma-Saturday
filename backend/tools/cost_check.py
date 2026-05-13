@@ -1,7 +1,11 @@
-"""Tool 5 — Validate the itinerary against the user's budget.
+"""Tool 5 — Validate the itinerary's total cost against the user's budget.
 
-Pure Python. Sums estimated costs. If over budget, trims the most expensive item
-(unless that brings us under a 2-item minimum). Flags any trade-offs introduced.
+Trimming is NOT done here. Budget enforcement happens in Tool 3 (filter_options)
+before candidates reach Claude. Claude is responsible for respecting the budget
+when building the itinerary in Tool 4.
+
+This tool only sums the costs and flags if Claude went over — adding a trade-off
+note so the user sees it, but leaving the itinerary intact.
 """
 
 from models.domain import ParsedPreferences, ItineraryItem
@@ -16,29 +20,20 @@ def cost_check(itinerary: list[ItineraryItem], prefs: ParsedPreferences) -> dict
             "budget_ok": True,
         }
 
-    items = list(itinerary)
-    total = sum(i.estimated_cost for i in items)
+    total = round(sum(i.estimated_cost for i in itinerary), 2)
+    overage = round(total - prefs.budget, 2)
+    budget_ok = overage <= 0
+
     extra_trade_offs: list[str] = []
-
-    while total > prefs.budget and len(items) > 2:
-        items.sort(key=lambda i: i.estimated_cost, reverse=True)
-        dropped = items.pop(0)
-        extra_trade_offs.append(
-            f"Dropped '{dropped.place_name}' (~{int(dropped.estimated_cost)}) to stay within budget."
-        )
-        total = sum(i.estimated_cost for i in items)
-
-    items.sort(key=lambda i: i.time_slot)
-
-    budget_ok = total <= prefs.budget
     if not budget_ok:
         extra_trade_offs.append(
-            f"Plan is ~{int(total - prefs.budget)} over your budget — kept the essentials anyway."
+            f"Plan is ~₹{int(overage)} over your budget — "
+            "consider dropping one stop or adjusting your budget."
         )
 
     return {
-        "itinerary": items,
-        "total_cost": round(total, 2),
+        "itinerary": itinerary,
+        "total_cost": total,
         "extra_trade_offs": extra_trade_offs,
         "budget_ok": budget_ok,
     }
