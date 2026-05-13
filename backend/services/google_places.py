@@ -11,6 +11,7 @@ from core.config import settings
 
 PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 FIELD_MASK = (
+    "places.id,"
     "places.displayName,"
     "places.rating,"
     "places.userRatingCount,"
@@ -33,6 +34,12 @@ class GooglePlacesError(Exception):
     pass
 
 
+def _maps_url(place_id: str) -> str:
+    if not place_id:
+        return ""
+    return f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+
+
 def _normalise_place(raw: dict) -> dict:
     price_level_str = raw.get("priceLevel")
     price_level = PRICE_LEVEL_MAP.get(price_level_str) if price_level_str else None
@@ -42,6 +49,7 @@ def _normalise_place(raw: dict) -> dict:
     opening = raw.get("currentOpeningHours")
     if isinstance(opening, dict):
         open_now = opening.get("openNow")
+    place_id = raw.get("id", "")
 
     return {
         "name": name,
@@ -50,6 +58,8 @@ def _normalise_place(raw: dict) -> dict:
         "user_rating_count": raw.get("userRatingCount"),
         "price_level": price_level,
         "address": raw.get("formattedAddress", ""),
+        "place_id": place_id,
+        "maps_url": _maps_url(place_id),
         "open_now": open_now,
     }
 

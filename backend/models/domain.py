@@ -26,6 +26,8 @@ class Place(BaseModel):
     user_rating_count: Optional[int] = None
     price_level: Optional[int] = None
     address: str = ""
+    place_id: str = ""
+    maps_url: str = ""
     estimated_cost: float = 0
     score: float = 0
     trade_off: Optional[str] = None
@@ -40,3 +42,4 @@ class ItineraryItem(BaseModel):
     duration_minutes: int = 60
     estimated_cost: float = 0
     reasoning: str = ""
+    maps_url: str = ""

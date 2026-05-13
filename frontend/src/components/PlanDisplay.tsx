@@ -96,6 +96,19 @@ export function PlanDisplay({ plan, error }: Props) {
               <span>{stop.duration_minutes} min</span>
               <span>·</span>
               <span>₹{Math.round(stop.estimated_cost)}</span>
+              {stop.maps_url && (
+                <>
+                  <span>·</span>
+                  <a
+                    href={stop.maps_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent hover:underline"
+                  >
+                    Open in Maps ↗
+                  </a>
+                </>
+              )}
             </div>
           </div>
         ))}

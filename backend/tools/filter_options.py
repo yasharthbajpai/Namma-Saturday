@@ -80,11 +80,15 @@ def _score_place(place: Place, prefs: ParsedPreferences) -> tuple[float, str | N
         if place.user_rating_count > 5_000:
             score += 0.5    # stacks → +1.0 total
 
-    # ── Budget fit ────────────────────────────────────────────────────────────
+    # ── Budget fit + premium bias ─────────────────────────────────────────────
     per_stop = _per_stop_budget(prefs)          # total budget ÷ estimated stops
 
     if place.estimated_cost <= per_stop:
-        score += 1.5                            # comfortably within budget
+        score += 1.5                            # within budget
+        # When budget is generous, reward higher price_level places — a high
+        # budget signals the user wants quality, not just cheap options.
+        if per_stop > 1500 and place.price_level is not None:
+            score += place.price_level * 0.4   # price_level 3 → +1.2, level 4 → +1.6
 
     elif place.estimated_cost <= per_stop * 1.3:
         score -= 0.5                            # up to 30 % over — marginal, keep but warn

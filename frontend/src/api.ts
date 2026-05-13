@@ -14,6 +14,7 @@ export type ItineraryItem = {
   duration_minutes: number;
   estimated_cost: number;
   reasoning: string;
+  maps_url: string;
 };
 
 export type ToolTrace = {
