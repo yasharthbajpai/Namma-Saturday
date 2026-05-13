@@ -8,24 +8,49 @@
 
 | | |
 |---|---|
-| **Live URL** | [https://namma-saturday.vercel.app](https://namma-saturday.vercel.app) |
-| **Backend API** | [https://namma-saturday-production.up.railway.app/health](https://namma-saturday-production.up.railway.app/health) |
-| **GitHub Repo** | [https://github.com/yasharthbajpai/Namma-Saturday](https://github.com/yasharthbajpai/Namma-Saturday) |
+| **Live URL** | [namma-saturday.vercel.app](https://namma-saturday.vercel.app) |
+| **Backend API** | [namma-saturday-production.up.railway.app/health](https://namma-saturday-production.up.railway.app/health) |
+| **GitHub Repo** | [github.com/yasharthbajpai/Namma-Saturday](https://github.com/yasharthbajpai/Namma-Saturday) |
 | **Loom Demo** | _Coming soon_ |
 
 ---
 
-## How I Used AI Tools During the Build
+## How AI Was Used During the Build
 
-- **Claude (via AWS Bedrock)** is the core LLM in the pipeline — it receives scored, filtered places and generates the final itinerary with per-stop reasoning, trade-offs, and time-logical ordering.
-- **Cursor** (AI coding assistant) was used throughout development to scaffold the FastAPI pipeline, write the scoring logic in `filter_options.py`, debug SSE streaming, and iterate on the React trace UI — significantly speeding up the build.
-- The tool pipeline is designed so that AI only owns the narrative layer (Tool 4); all budget math, constraint filtering, and scoring are deterministic Python — making the agent reliable, testable, and predictable even when the LLM is slow or unavailable.
+**Claude (via AWS Bedrock)** is the core LLM in the pipeline — it receives scored, filtered places and generates the final itinerary with per-stop reasoning, trade-offs, and time-logical ordering.
+
+**Cursor** (AI coding assistant) was used throughout development to scaffold the FastAPI pipeline, write the scoring logic in `filter_options.py`, debug SSE streaming, and iterate on the React trace UI.
+
+The tool pipeline is designed so that AI only owns the narrative layer (Tool 4). All budget math, constraint filtering, and scoring are deterministic Python — making the agent reliable, testable, and predictable even when the LLM is slow or unavailable.
 
 ---
 
-## Architecture
-
 ![Architecture](./docs/architecture.png)
+![High Level Design](./docs/hld.png)
+
+### File Structure
+
+| File | Responsibility |
+|---|---|
+| `main.py` | FastAPI app, CORS, router mount |
+| `routes/plan.py` | `POST /api/plan` and `POST /api/plan/stream` |
+| `core/agent.py` | Orchestrator — runs tools 1–4, builds `PlanResponse` |
+| `core/pipeline.py` | `tool_span` context manager, SSE queue, timing, trace |
+| `core/config.py` | Pydantic Settings — loads env vars |
+| `tools/parse_preferences.py` | Tool 1 — free-text → `ParsedPreferences` (pure Python) |
+| `tools/get_options.py` | Tool 2 — Places queries → `list[Place]` (async + fallback) |
+| `tools/filter_options.py` | Tool 3 — score + filter → `{approved, borderline}` (pure Python) |
+| `tools/build_itinerary.py` | Tool 4 — Claude prompt → `ItineraryItem[]` (async + fallback) |
+| `services/google_places.py` | httpx async client for Places Text Search (New) API |
+| `services/bedrock.py` | boto3 wrapper for Bedrock `invoke_model` via `asyncio.to_thread` |
+| `models/request.py` | `UserInput` — what the frontend sends |
+| `models/response.py` | `PlanResponse`, `ToolTrace` — what the backend returns |
+| `models/domain.py` | `ParsedPreferences`, `Place`, `ItineraryItem` — internal models |
+| `src/App.tsx` | Root component — state, SSE event handler, layout |
+| `src/api.ts` | TypeScript types + fetch/SSE client |
+| `src/components/InputForm.tsx` | Form: city, budget, time, mood, interests, constraints |
+| `src/components/PlanDisplay.tsx` | Itinerary timeline, summary, trade-offs, cost total |
+| `src/components/AgentTrace.tsx` | Per-tool trace: name, output, duration, fallback flag |
 
 ---
 
@@ -57,8 +82,8 @@ frontend/   React + Vite + Tailwind — input form, streaming plan timeline, age
 
 - Python 3.12+
 - Node.js 18+
-- AWS credentials with `bedrock:InvokeModel` permission (optional — fallback works without it)
-- Google Places API key (optional — curated fallback works without it)
+- AWS credentials with `bedrock:InvokeModel` permission _(optional — fallback works without it)_
+- Google Places API key _(optional — curated fallback works without it)_
 
 ### Backend
 
@@ -74,7 +99,7 @@ uvicorn main:app --reload --port 8000
 
 The backend will be available at `http://localhost:8000`.
 
-> The agent works **without any credentials** — Tool 2 falls back to a curated list and Tool 4 falls back to a deterministic Python itinerary. With credentials you get live Places data and Claude-generated reasoning.
+> **Note:** The agent works **without any credentials** — Tool 2 falls back to a curated list and Tool 4 falls back to a deterministic Python itinerary. With credentials you get live Places data and Claude-generated reasoning.
 
 ### Frontend
 
@@ -131,6 +156,6 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Notes
 
-- The agent **never crashes**. Every failure path either uses a fallback or returns a graceful error structure with the trace populated — the UI always has something to show.
-- Tools 1, 3 are pure Python — fast, deterministic, easy to test. Only Tools 2 and 4 hit external services.
+- The agent **never crashes** — every failure path either uses a fallback or returns a graceful error structure with the trace populated, so the UI always has something to show.
+- Tools 1 and 3 are pure Python — fast, deterministic, and easy to test. Only Tools 2 and 4 hit external services.
 - Budget math and constraint filtering are deterministic code, not LLM — Claude only owns narrative and time-logical ordering.
