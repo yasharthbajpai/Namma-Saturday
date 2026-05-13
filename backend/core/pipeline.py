@@ -21,7 +21,7 @@ from models.response import ToolTrace
 
 _logger = logging.getLogger("agent")
 
-TOTAL_TOOLS = 5
+TOTAL_TOOLS = 4
 
 # Holds the SSE event queue for the current request context.
 # Set via set_event_queue(); tool_span reads it automatically.

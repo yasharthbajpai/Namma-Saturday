@@ -95,12 +95,12 @@ def parse_preferences(user_input: UserInput) -> ParsedPreferences:
     needs_clarification = len(questions) > 0
 
     return ParsedPreferences(
-        city=city or "Bangalore",
-        budget=budget if budget > 0 else 1500.0,
-        hours_available=hours if hours > 0 else 4.0,
+        city=city,
+        budget=budget,
+        hours_available=hours,
         energy_level=energy,
         novelty_preference=novelty,
-        interests=interests or ["food", "walks"],
+        interests=interests if needs_clarification else (interests or ["food", "walks"]),
         constraints=constraints,
         raw_mood=user_input.mood,
         needs_clarification=needs_clarification,

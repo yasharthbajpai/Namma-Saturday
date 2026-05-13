@@ -13,7 +13,10 @@ from models.domain import ParsedPreferences, Place
 
 
 NON_VEG_KEYWORDS = {"meat", "barbecue", "steak_house", "seafood"}
-CROWDED_TYPES = {"night_club", "shopping_mall", "amusement_park", "tourist_attraction"}
+CROWDED_TYPES    = {"night_club", "shopping_mall", "amusement_park", "tourist_attraction"}
+
+MAX_APPROVED   = 25   # max candidates passed to Tool 4 from the approved bucket
+MAX_BORDERLINE = 10  # max candidates passed to Tool 4 from the borderline bucket
 
 
 def _per_stop_budget(prefs: ParsedPreferences) -> float:
@@ -22,73 +25,102 @@ def _per_stop_budget(prefs: ParsedPreferences) -> float:
 
 
 def _violates_constraints(place: Place, constraints: list[str]) -> tuple[bool, str | None]:
-    """Returns (hard_fail, soft_warning)."""
-    type_str = " ".join(place.types).lower()
+    """Check whether a place violates any user constraint.
+
+    Returns:
+        (True,  None)    → hard reject, drop the place entirely
+        (False, warning) → soft warning, keep but surface the note
+        (False, None)    → no issue, place is clean
+    """
+    type_str   = " ".join(place.types).lower()
     name_lower = place.name.lower()
 
     for c in constraints:
+
+        # ── Vegetarian ────────────────────────────────────────────────────────
         if "veg" in c:
             if any(kw in type_str for kw in NON_VEG_KEYWORDS):
-                return True, None
+                return True, None                           # non-veg venue type
             if "meat" in name_lower or "barbecue" in name_lower or "kebab" in name_lower:
-                return True, None
+                return True, None                           # non-veg name keyword
+
+        # ── Avoid crowds ──────────────────────────────────────────────────────
         if "avoid crowded" in c or "no crowd" in c or "not crowded" in c:
-            if place.user_rating_count and place.user_rating_count > 30000:
-                return False, "Popular spot — may get crowded"
+            if place.user_rating_count and place.user_rating_count > 30_000:
+                return False, "Popular spot — may get crowded"      # very high footfall
             if any(t in CROWDED_TYPES for t in place.types):
-                return False, "Tends to be a crowded venue"
+                return False, "Tends to be a crowded venue"         # inherently busy category
+
+        # ── Quiet ─────────────────────────────────────────────────────────────
         if "quiet" in c:
-            if place.user_rating_count and place.user_rating_count > 20000:
+            if place.user_rating_count and place.user_rating_count > 20_000:
                 return False, "Quite popular, may not feel as quiet"
 
     return False, None
 
 
 def _score_place(place: Place, prefs: ParsedPreferences) -> tuple[float, str | None]:
-    score = 5.0
-    trade_off: str | None = None
+    """Score a place 0–10 based on rating, popularity, budget fit, interests, and energy match.
 
+    Returns:
+        (score, trade_off_message | None)
+    """
+    score:      float       = 5.0   # neutral baseline
+    trade_off:  str | None  = None
+
+    # ── Star rating ───────────────────────────────────────────────────────────
+    # 3.5 is the neutral midpoint; e.g. 4.5 → +1.5 | 3.0 → −0.75
     if place.rating is not None:
         score += (place.rating - 3.5) * 1.5
 
+    # ── Review count (popularity signal) ─────────────────────────────────────
     if place.user_rating_count:
         if place.user_rating_count > 500:
-            score += 0.5
-        if place.user_rating_count > 5000:
-            score += 0.5
+            score += 0.5    # reasonably reviewed
+        if place.user_rating_count > 5_000:
+            score += 0.5    # stacks → +1.0 total
 
-    per_stop_budget = _per_stop_budget(prefs)
-    if place.estimated_cost <= per_stop_budget:
-        score += 1.5
-    elif place.estimated_cost <= per_stop_budget * 1.3:
-        score -= 0.5
+    # ── Budget fit ────────────────────────────────────────────────────────────
+    per_stop = _per_stop_budget(prefs)          # total budget ÷ estimated stops
+
+    if place.estimated_cost <= per_stop:
+        score += 1.5                            # comfortably within budget
+
+    elif place.estimated_cost <= per_stop * 1.3:
+        score -= 0.5                            # up to 30 % over — marginal, keep but warn
         trade_off = (
-            f"Slightly over per-stop budget (est. ~{int(place.estimated_cost)} vs ~{int(per_stop_budget)})"
+            f"Slightly over per-stop budget"
+            f" (est. ~{int(place.estimated_cost)} vs ~{int(per_stop)})"
         )
     else:
-        score -= 3.0
+        score -= 3.0                            # >30 % over — heavy penalty
         trade_off = (
-            f"Significantly over per-stop budget (est. ~{int(place.estimated_cost)} vs ~{int(per_stop_budget)})"
+            f"Significantly over per-stop budget"
+            f" (est. ~{int(place.estimated_cost)} vs ~{int(per_stop)})"
         )
 
-    type_str = " ".join(place.types).lower()
+    # ── Interest match ────────────────────────────────────────────────────────
+    # Each matching interest adds +0.5; multiple interests stack
+    type_str   = " ".join(place.types).lower()
     name_lower = place.name.lower()
     for interest in prefs.interests:
         if interest in type_str or interest in name_lower:
             score += 0.5
 
-    if prefs.energy_level == "low" and any(t in CROWDED_TYPES for t in place.types):
-        score -= 1.0
+    # ── Energy level fit ──────────────────────────────────────────────────────
+    if prefs.energy_level == "low"  and any(t in CROWDED_TYPES for t in place.types):
+        score -= 1.0    # low-energy user + high-stimulation venue = bad fit
     if prefs.energy_level == "high" and "park" in type_str:
-        score -= 0.3
+        score -= 0.3    # mild penalty: parks are too passive for a high-energy day
 
-    score = max(0.0, min(10.0, score))
+    score = max(0.0, min(10.0, score))          # clamp to [0, 10]
     return score, trade_off
 
 
 def filter_options(places: list[Place], prefs: ParsedPreferences) -> dict:
-    approved: list[Place] = []
+    approved:   list[Place] = []
     borderline: list[Place] = []
+    low_scored: list[Place] = []   # scored but fell below borderline threshold
     rejected_count = 0
 
     for place in places:
@@ -110,14 +142,26 @@ def filter_options(places: list[Place], prefs: ParsedPreferences) -> dict:
             place.is_borderline = True
             borderline.append(place)
         else:
-            rejected_count += 1
+            # Keep low-scored places as a last resort instead of discarding them
+            place.is_borderline = True
+            place.trade_off = (place.trade_off or "") + (
+                "; Best available option despite low score" if place.trade_off
+                else "Best available option despite low score"
+            )
+            low_scored.append(place)
 
     approved.sort(key=lambda p: p.score, reverse=True)
     borderline.sort(key=lambda p: p.score, reverse=True)
+    low_scored.sort(key=lambda p: p.score, reverse=True)
+
+    # ── Fallback: if nothing passed the thresholds, surface the least-bad options ──
+    if not approved and not borderline:
+        borderline = low_scored[:MAX_BORDERLINE]
+        low_scored = []
 
     return {
-        "approved": approved[:8],
-        "borderline": borderline[:4],
-        "rejected_count": rejected_count,
+        "approved":           approved[:MAX_APPROVED],
+        "borderline":         borderline[:MAX_BORDERLINE],
+        "rejected_count":     rejected_count + len(low_scored),
         "candidates_exhausted": (len(approved) + len(borderline)) == 0,
     }

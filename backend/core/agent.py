@@ -1,19 +1,13 @@
-"""Agent orchestrator — runs the 5-tool pipeline sequentially and collects a trace.
+"""Agent orchestrator — runs the 4-tool pipeline sequentially and collects a trace.
 
 Pipeline:
-  Tool 1 parse_preferences      (pure Python)
-  Tool 2 get_options            (Google Places, with hardcoded fallback)
-  Tool 3 filter_options         (pure Python)
-  Tool 4 build_itinerary        (Bedrock Claude, with Python fallback)
-  Tool 5 cost_check             (pure Python)
+  Tool 1 parse_preferences  — pure Python, parses input, validates completeness
+  Tool 2 get_options        — Google Places, falls back to curated list on failure
+  Tool 3 filter_options     — pure Python, scores + filters by budget/constraints
+  Tool 4 build_itinerary    — Bedrock Claude, builds the best itinerary within budget
 
 If Tool 1 flags `needs_clarification`, the pipeline short-circuits and returns
-clarifying questions instead of running 2-5.
-
-Streaming:
-  run_agent_stream() activates an SSE event queue via contextvars so tool_span
-  automatically emits "thinking" and "trace" events without any changes to the
-  tool call sites.
+clarifying questions instead of running 2-4.
 """
 
 import logging
@@ -24,7 +18,6 @@ from tools.parse_preferences import parse_preferences
 from tools.get_options import get_options
 from tools.filter_options import filter_options
 from tools.build_itinerary import build_itinerary
-from tools.cost_check import cost_check
 
 logger = logging.getLogger("agent")
 
@@ -37,7 +30,6 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
     logger.info(f"  interests: {interests}  ·  constraints: {constraints}")
 
     trace: list[ToolTrace] = []
-
 
     #########################################################
     # Step 1 — turn free-text input into structured preferences
@@ -60,7 +52,6 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
             trace=trace,
         )
 
-
     #########################################################
     # Step 2 — fetch candidate places from Google Places (falls back to curated list on failure)
     #########################################################
@@ -77,7 +68,6 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
         candidates = []
         places_used_fallback = True
 
-
     #########################################################
     # Step 3 — score and filter candidates against budget + constraints
     #########################################################
@@ -92,7 +82,7 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
                        f"rejected={filter_result['rejected_count']}")
 
     #########################################################
-    # Step 4 — Claude arranges filtered places into a time-logical itinerary with reasoning
+    # Step 4 — Claude picks the best combination and builds the itinerary
     #########################################################
     try:
         async with tool_span(trace, "build_itinerary",
@@ -103,7 +93,7 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
                              thinking="Building your itinerary...") as span:
             itinerary_result = await build_itinerary(filter_result, prefs)
             span.output = (f"{len(itinerary_result['itinerary'])} items, "
-                           f"python_fallback={itinerary_result['used_python_fallback']}")
+                           f"total=₹{sum(i.estimated_cost for i in itinerary_result['itinerary']):.0f}")
             span.used_fallback = (itinerary_result["used_fallback"]
                                   or itinerary_result["used_python_fallback"])
     except Exception:
@@ -113,23 +103,9 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
             "trade_offs": [],
             "used_fallback": True,
             "used_python_fallback": True,
-            "candidates_exhausted": True,
         }
 
-    #########################################################
-    # Step 5 — validate total cost, trim if over budget
-    #########################################################
-    async with tool_span(trace, "cost_check",
-                         f"{len(itinerary_result['itinerary'])} items, "
-                         f"budget={prefs.budget}",
-                         step=5,
-                         thinking="Checking costs and finalising your plan...") as span:
-        cost_result = cost_check(itinerary_result["itinerary"], prefs)
-        span.output = (f"{len(cost_result['itinerary'])} items · "
-                       f"₹{cost_result['total_cost']} · budget_ok={cost_result['budget_ok']}")
-
     trade_offs = list(itinerary_result.get("trade_offs", []))
-    trade_offs.extend(cost_result.get("extra_trade_offs", []))
     if places_used_fallback:
         trade_offs.append("Used a curated fallback list — live place data was unavailable.")
 
@@ -139,13 +115,14 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
         or itinerary_result.get("used_python_fallback", False)
     )
     status = "fallback" if fallback_used else "ok"
+    total_cost = sum(i.estimated_cost for i in itinerary_result["itinerary"])
 
-    logger.info(f"DONE  status={status} · items={len(cost_result['itinerary'])} · ₹{cost_result['total_cost']}")
+    logger.info(f"DONE  status={status} · items={len(itinerary_result['itinerary'])} · ₹{total_cost:.0f}")
 
     return PlanResponse(
         status=status,
-        itinerary=cost_result["itinerary"],
-        total_cost=cost_result["total_cost"],
+        itinerary=itinerary_result["itinerary"],
+        total_cost=round(total_cost, 2),
         summary=itinerary_result.get("summary", ""),
         trade_offs=trade_offs,
         fallback_used=fallback_used,

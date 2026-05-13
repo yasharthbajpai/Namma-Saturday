@@ -14,14 +14,21 @@ from services.bedrock import invoke_claude, BedrockError
 
 
 SYSTEM_PROMPT = (
-    "You are a thoughtful Saturday planning assistant. You arrange real places into a "
-    "time-logical, low-stress itinerary and explain why each fits the user's mood, "
-    "interests, and constraints. You are honest about trade-offs. You only respond with "
-    "valid JSON in the exact schema requested."
+    "You are a thoughtful Saturday planning assistant. "
+    "Your job is to build the BEST possible itinerary within the given budget — "
+    "not just any plan that fits, but the one that maximises enjoyment, mood fit, "
+    "and variety for the money available. "
+    "Prefer high-rated, well-matched places over cheaper but less fitting ones. "
+    "If the budget is tight, be creative: mix a free outdoor spot with one good paid experience "
+    "rather than cramming in mediocre paid stops. "
+    "You are honest about trade-offs. You only respond with valid JSON in the exact schema requested."
 )
 
 
-USER_PROMPT_TEMPLATE = """User preferences:
+USER_PROMPT_TEMPLATE = """BUDGET CONSTRAINT: The sum of all estimated_cost values MUST NOT exceed ₹{budget}.
+Pick fewer stops or cheaper options if needed. Do not go over.
+
+User preferences:
 - City: {city}
 - Hours available: {hours}
 - Energy level: {energy}
@@ -29,7 +36,6 @@ USER_PROMPT_TEMPLATE = """User preferences:
 - Mood (raw): {mood}
 - Interests: {interests}
 - Constraints: {constraints}
-- Total budget: ~{budget}
 
 {candidates_block}
 
@@ -56,21 +62,27 @@ Rules:
 - If energy is low, start lighter and slower.
 - Fit within the available hours.
 - If a candidate is borderline (has a trade_off note), include it only if it materially improves the day, and explain the trade-off in reasoning.
-- Keep total estimated_cost at or under the budget.
 - Output JSON only. No prose before or after."""
 
 
 NORMAL_INSTRUCTION = (
-    "Build the best itinerary using ONLY the candidate places listed above. "
-    "Pick 3-5 stops, give each a time slot and duration, and explain why."
+    "Build the BEST possible itinerary using ONLY the candidate places listed above. "
+    "Choose the combination of 3-5 stops that maximises enjoyment and mood fit within the budget. "
+    "Prefer high-rated, well-matched places. If budget is tight, mix a free stop "
+    "(park, walk) with one or two good paid experiences rather than filling every slot "
+    "with mediocre paid options. "
+    "Give each stop a time slot, duration, and a clear reason why it fits this specific user."
 )
 
 FALLBACK_INSTRUCTION = (
-    "No suitable places matched the user's constraints in our data. Generate a realistic "
-    "'minimal chill day' plan for this city using free or very low-cost ideas: parks, "
-    "lakes, neighbourhood walks, local cafes, home cooking, music or reading at home, etc. "
-    "Be specific to the city where possible. Aim for 4-5 itinerary items so it still feels "
-    "like a full plan. This is a fallback — say so honestly in the summary and trade_offs."
+    "No suitable places were found in our database for this user. "
+    "Use your own knowledge of the city to suggest a realistic, personalised Saturday plan. "
+    "Pick real, specific places (actual café names, parks, markets, venues) that exist in "
+    "the city and genuinely match the user's interests, energy level, mood, and constraints "
+    "listed above. Respect the budget — prefer free or low-cost options if the budget is tight. "
+    "Aim for 4-5 stops so the day feels full. "
+    "Mention in the summary and trade_offs that these suggestions come from general knowledge "
+    "rather than live data, so availability and pricing should be verified."
 )
 
 
