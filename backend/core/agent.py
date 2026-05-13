@@ -9,12 +9,17 @@ Pipeline:
 
 If Tool 1 flags `needs_clarification`, the pipeline short-circuits and returns
 clarifying questions instead of running 2-5.
+
+Streaming:
+  run_agent_stream() activates an SSE event queue via contextvars so tool_span
+  automatically emits "thinking" and "trace" events without any changes to the
+  tool call sites.
 """
 
 import logging
 from models.request import UserInput
 from models.response import PlanResponse, ToolTrace
-from core.logging_config import tool_span
+from core.pipeline import tool_span
 from tools.parse_preferences import parse_preferences
 from tools.get_options import get_options
 from tools.filter_options import filter_options
@@ -33,13 +38,12 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
 
     trace: list[ToolTrace] = []
 
-
-    #########################################################
     # Step 1 — turn free-text input into structured preferences
-    #########################################################
     async with tool_span(trace, "parse_preferences",
                          f"city={user_input.city!r}, budget={user_input.budget}, "
-                         f"time={user_input.available_time!r}", step=1) as span:
+                         f"time={user_input.available_time!r}",
+                         step=1,
+                         thinking="Reading your preferences...") as span:
         prefs = parse_preferences(user_input)
         span.output = (f"energy={prefs.energy_level}, hours={prefs.hours_available}, "
                        f"novelty={prefs.novelty_preference}, clarify={prefs.needs_clarification}")
@@ -53,39 +57,39 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
             trace=trace,
         )
 
-
-    #########################################################
     # Step 2 — fetch candidate places from Google Places (falls back to curated list on failure)
-    #########################################################
     places_used_fallback = False
     try:
         async with tool_span(trace, "get_options",
-                             f"city={prefs.city}, interests={prefs.interests}", step=2) as span:
+                             f"city={prefs.city}, interests={prefs.interests}",
+                             step=2,
+                             thinking=f"Searching for places in {prefs.city}...") as span:
             candidates, places_used_fallback = await get_options(prefs)
             span.output = f"{len(candidates)} candidates"
             span.used_fallback = places_used_fallback
     except Exception:
         candidates = []
         places_used_fallback = True
-    #########################################################
+
     # Step 3 — score and filter candidates against budget + constraints
     async with tool_span(trace, "filter_options",
                          f"{len(candidates)} candidates, budget={prefs.budget}, "
-                         f"constraints={prefs.constraints}", step=3) as span:
+                         f"constraints={prefs.constraints}",
+                         step=3,
+                         thinking="Filtering places against your budget and constraints...") as span:
         filter_result = filter_options(candidates, prefs)
         span.output = (f"approved={len(filter_result['approved'])}, "
                        f"borderline={len(filter_result['borderline'])}, "
                        f"rejected={filter_result['rejected_count']}")
 
-
-    #########################################################
     # Step 4 — Claude arranges filtered places into a time-logical itinerary with reasoning
-    #########################################################
     try:
         async with tool_span(trace, "build_itinerary",
                              f"approved={len(filter_result['approved'])}, "
                              f"borderline={len(filter_result['borderline'])}, "
-                             f"fallback_mode={filter_result['candidates_exhausted']}", step=4) as span:
+                             f"fallback_mode={filter_result['candidates_exhausted']}",
+                             step=4,
+                             thinking="Building your itinerary...") as span:
             itinerary_result = await build_itinerary(filter_result, prefs)
             span.output = (f"{len(itinerary_result['itinerary'])} items, "
                            f"python_fallback={itinerary_result['used_python_fallback']}")
@@ -101,13 +105,12 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
             "candidates_exhausted": True,
         }
 
-
-    #########################################################
     # Step 5 — validate total cost, trim if over budget
-    #########################################################
     async with tool_span(trace, "cost_check",
                          f"{len(itinerary_result['itinerary'])} items, "
-                         f"budget={prefs.budget}", step=5) as span:
+                         f"budget={prefs.budget}",
+                         step=5,
+                         thinking="Checking costs and finalising your plan...") as span:
         cost_result = cost_check(itinerary_result["itinerary"], prefs)
         span.output = (f"{len(cost_result['itinerary'])} items · "
                        f"₹{cost_result['total_cost']} · budget_ok={cost_result['budget_ok']}")

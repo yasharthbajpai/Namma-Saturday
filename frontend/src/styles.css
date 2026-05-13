@@ -318,3 +318,30 @@ body {
   font-size: 14px;
   border: 1px solid var(--border);
 }
+
+.live-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.live-step:last-child {
+  border-bottom: none;
+}
+
+.step-done {
+  color: var(--good);
+  font-size: 14px;
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.step-ms {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
