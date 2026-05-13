@@ -68,51 +68,70 @@ export default function App() {
   };
 
   return (
-    <div className="app">
-      <header className="header">
-        <h1>Perfect Saturday Planner</h1>
-        <p>Tell me your vibe and I'll build you a Saturday plan.</p>
+    <div className="max-w-[1080px] mx-auto px-6 min-[900px]:px-10 pt-12 pb-28">
+
+      {/* ── Masthead ── */}
+      <header className="mb-10">
+        <p className="font-mono text-[10px] tracking-[0.35em] text-muted uppercase mb-4">
+          Bangalore · AI day planner
+        </p>
+        <h1 className="font-display text-[54px] min-[900px]:text-[68px] leading-[1] font-semibold tracking-[-1.5px] text-cream mb-6">
+          Namma<br />Saturday
+        </h1>
+        <div className="h-px bg-line-2" />
+        <p className="text-muted text-sm mt-3">
+          Tell me your vibe. I'll plan the rest.
+        </p>
       </header>
 
-      <div className="grid">
+      {/* ── Two-column layout ── */}
+      <div className="grid grid-cols-1 gap-10 min-[900px]:grid-cols-[360px_1fr]">
+
         <InputForm loading={loading} onSubmit={handleSubmit} />
-        <div>
-          {/* Live trace while loading */}
+
+        <div className="min-w-0">
+
+          {/* Live thinking trace */}
           {loading && liveSteps.length > 0 && (
-            <div className="panel" style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                Agent is thinking
+            <div className="anim-fade-in mb-8">
+              <p className="font-mono text-[10px] tracking-[0.3em] text-muted uppercase mb-4">
+                Building your day
+              </p>
+              <div className="space-y-0">
+                {liveSteps.map((s) => (
+                  <div
+                    key={s.step}
+                    className="flex items-start gap-3 py-2.5 border-b border-line last:border-b-0"
+                  >
+                    {s.kind === "thinking" ? (
+                      <>
+                        <span
+                          className="mt-[3px] w-1.5 h-1.5 rounded-full bg-accent shrink-0"
+                          style={{ animation: "flicker 1.2s ease-in-out infinite" }}
+                        />
+                        <span className="text-[13px] text-muted">{s.message}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="mt-[3px] w-1.5 h-1.5 rounded-full bg-good shrink-0" />
+                        <span className="text-[13px] text-cream">{s.tool_name}</span>
+                        <span className="text-[13px] text-muted ml-1 truncate">{s.output}</span>
+                        <span className="ml-auto font-mono text-[11px] text-faint shrink-0">{s.duration_ms}ms</span>
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
-              {liveSteps.map((s) => (
-                <div key={s.step} className="live-step">
-                  {s.kind === "thinking" ? (
-                    <>
-                      <span className="spinner" />
-                      <span>{s.message}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="step-done">✓</span>
-                      <span style={{ color: "var(--text)" }}>{s.tool_name}</span>
-                      <span style={{ color: "var(--text-dim)", marginLeft: 8 }}>{s.output}</span>
-                      <span className="step-ms">{s.duration_ms}ms</span>
-                    </>
-                  )}
-                </div>
-              ))}
             </div>
           )}
 
           {/* Final plan */}
-          {!loading && (
-            <div className="panel">
-              <PlanDisplay plan={plan} error={error} />
-            </div>
-          )}
+          {!loading && <PlanDisplay plan={plan} error={error} />}
 
-          {/* Full trace (collapsed, shown after plan loads) */}
+          {/* Agent trace */}
           {!loading && trace.length > 0 && <AgentTrace trace={trace} />}
         </div>
+
       </div>
     </div>
   );
