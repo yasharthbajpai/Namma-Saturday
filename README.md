@@ -11,7 +11,7 @@
 | **Live URL** | [namma-saturday.vercel.app](https://namma-saturday.vercel.app) |
 | **Backend API** | [namma-saturday-production.up.railway.app/health](https://namma-saturday-production.up.railway.app/health) |
 | **GitHub Repo** | [github.com/yasharthbajpai/Namma-Saturday](https://github.com/yasharthbajpai/Namma-Saturday) |
-| **Loom Demo** | _Coming soon_ |
+| **Demo Video** | [Watch on Google Drive](https://drive.google.com/file/d/1wVhTWtaR6ttNylrpbSwPxCnmPKQPER4v/view?usp=sharing) |
 
 ---
 
