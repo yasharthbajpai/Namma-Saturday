@@ -38,7 +38,10 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
 
     trace: list[ToolTrace] = []
 
+
+    #########################################################
     # Step 1 — turn free-text input into structured preferences
+    #########################################################
     async with tool_span(trace, "parse_preferences",
                          f"city={user_input.city!r}, budget={user_input.budget}, "
                          f"time={user_input.available_time!r}",
@@ -57,7 +60,10 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
             trace=trace,
         )
 
+
+    #########################################################
     # Step 2 — fetch candidate places from Google Places (falls back to curated list on failure)
+    #########################################################
     places_used_fallback = False
     try:
         async with tool_span(trace, "get_options",
@@ -71,7 +77,10 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
         candidates = []
         places_used_fallback = True
 
+
+    #########################################################
     # Step 3 — score and filter candidates against budget + constraints
+    #########################################################
     async with tool_span(trace, "filter_options",
                          f"{len(candidates)} candidates, budget={prefs.budget}, "
                          f"constraints={prefs.constraints}",
@@ -82,7 +91,9 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
                        f"borderline={len(filter_result['borderline'])}, "
                        f"rejected={filter_result['rejected_count']}")
 
+    #########################################################
     # Step 4 — Claude arranges filtered places into a time-logical itinerary with reasoning
+    #########################################################
     try:
         async with tool_span(trace, "build_itinerary",
                              f"approved={len(filter_result['approved'])}, "
@@ -105,7 +116,9 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
             "candidates_exhausted": True,
         }
 
+    #########################################################
     # Step 5 — validate total cost, trim if over budget
+    #########################################################
     async with tool_span(trace, "cost_check",
                          f"{len(itinerary_result['itinerary'])} items, "
                          f"budget={prefs.budget}",
