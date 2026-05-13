@@ -25,28 +25,27 @@ logger = logging.getLogger("agent")
 
 
 async def run_agent(user_input: UserInput) -> PlanResponse:
-    logger.info("=" * 60)
-    logger.info(
-        f"AGENT RUN | city={user_input.city!r} budget={user_input.budget} "
-        f"time={user_input.available_time!r} mood={user_input.mood!r}"
-    )
-    logger.info(f"  interests={user_input.interests} constraints={user_input.constraints}")
-    logger.info("-" * 60)
+    interests = ", ".join(user_input.interests) or "—"
+    constraints = ", ".join(user_input.constraints) or "—"
+    logger.info(f"AGENT RUN  {user_input.city} · ₹{user_input.budget} · {user_input.available_time}")
+    logger.info(f"  mood: {user_input.mood}")
+    logger.info(f"  interests: {interests}  ·  constraints: {constraints}")
 
     trace: list[ToolTrace] = []
 
-    # ── Tool 1: Parse ────────────────────────────────────────────
+
+    #########################################################
+    # Step 1 — turn free-text input into structured preferences
+    #########################################################
     async with tool_span(trace, "parse_preferences",
                          f"city={user_input.city!r}, budget={user_input.budget}, "
-                         f"time={user_input.available_time!r}") as span:
+                         f"time={user_input.available_time!r}", step=1) as span:
         prefs = parse_preferences(user_input)
         span.output = (f"energy={prefs.energy_level}, hours={prefs.hours_available}, "
                        f"novelty={prefs.novelty_preference}, clarify={prefs.needs_clarification}")
 
     if prefs.needs_clarification:
-        logger.info(f"  -> clarify: {prefs.clarification_questions}")
-        logger.info("AGENT RUN ENDED (needs_clarification)")
-        logger.info("=" * 60)
+        logger.info(f"CLARIFY  {prefs.clarification_questions}")
         return PlanResponse(
             status="needs_clarification",
             clarification_questions=prefs.clarification_questions,
@@ -54,34 +53,39 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
             trace=trace,
         )
 
-    # ── Tool 2: Get options ──────────────────────────────────────
+
+    #########################################################
+    # Step 2 — fetch candidate places from Google Places (falls back to curated list on failure)
+    #########################################################
     places_used_fallback = False
     try:
         async with tool_span(trace, "get_options",
-                             f"city={prefs.city}, interests={prefs.interests}") as span:
+                             f"city={prefs.city}, interests={prefs.interests}", step=2) as span:
             candidates, places_used_fallback = await get_options(prefs)
             span.output = f"{len(candidates)} candidates"
             span.used_fallback = places_used_fallback
     except Exception:
         candidates = []
         places_used_fallback = True
-
-    # ── Tool 3: Filter ───────────────────────────────────────────
+    #########################################################
+    # Step 3 — score and filter candidates against budget + constraints
     async with tool_span(trace, "filter_options",
                          f"{len(candidates)} candidates, budget={prefs.budget}, "
-                         f"constraints={prefs.constraints}") as span:
+                         f"constraints={prefs.constraints}", step=3) as span:
         filter_result = filter_options(candidates, prefs)
         span.output = (f"approved={len(filter_result['approved'])}, "
                        f"borderline={len(filter_result['borderline'])}, "
-                       f"rejected={filter_result['rejected_count']}, "
-                       f"exhausted={filter_result['candidates_exhausted']}")
+                       f"rejected={filter_result['rejected_count']}")
 
-    # ── Tool 4: Build itinerary ──────────────────────────────────
+
+    #########################################################
+    # Step 4 — Claude arranges filtered places into a time-logical itinerary with reasoning
+    #########################################################
     try:
         async with tool_span(trace, "build_itinerary",
                              f"approved={len(filter_result['approved'])}, "
                              f"borderline={len(filter_result['borderline'])}, "
-                             f"fallback_mode={filter_result['candidates_exhausted']}") as span:
+                             f"fallback_mode={filter_result['candidates_exhausted']}", step=4) as span:
             itinerary_result = await build_itinerary(filter_result, prefs)
             span.output = (f"{len(itinerary_result['itinerary'])} items, "
                            f"python_fallback={itinerary_result['used_python_fallback']}")
@@ -97,15 +101,17 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
             "candidates_exhausted": True,
         }
 
-    # ── Tool 5: Cost check ───────────────────────────────────────
+
+    #########################################################
+    # Step 5 — validate total cost, trim if over budget
+    #########################################################
     async with tool_span(trace, "cost_check",
                          f"{len(itinerary_result['itinerary'])} items, "
-                         f"budget={prefs.budget}") as span:
+                         f"budget={prefs.budget}", step=5) as span:
         cost_result = cost_check(itinerary_result["itinerary"], prefs)
-        span.output = (f"{len(cost_result['itinerary'])} items, "
-                       f"total={cost_result['total_cost']}, budget_ok={cost_result['budget_ok']}")
+        span.output = (f"{len(cost_result['itinerary'])} items · "
+                       f"₹{cost_result['total_cost']} · budget_ok={cost_result['budget_ok']}")
 
-    # ── Finalise ─────────────────────────────────────────────────
     trade_offs = list(itinerary_result.get("trade_offs", []))
     trade_offs.extend(cost_result.get("extra_trade_offs", []))
     if places_used_fallback:
@@ -118,10 +124,7 @@ async def run_agent(user_input: UserInput) -> PlanResponse:
     )
     status = "fallback" if fallback_used else "ok"
 
-    logger.info("-" * 60)
-    logger.info(f"AGENT RUN COMPLETED | status={status} "
-                f"items={len(cost_result['itinerary'])} total=₹{cost_result['total_cost']}")
-    logger.info("=" * 60)
+    logger.info(f"DONE  status={status} · items={len(cost_result['itinerary'])} · ₹{cost_result['total_cost']}")
 
     return PlanResponse(
         status=status,

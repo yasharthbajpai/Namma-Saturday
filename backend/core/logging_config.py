@@ -42,9 +42,7 @@ class ISTFormatter(logging.Formatter):
 
 
 def setup_logging(level: int = logging.INFO) -> None:
-    formatter = ISTFormatter(
-        fmt="%(asctime)s | %(name)-12s | %(levelname)-5s | %(message)s",
-    )
+    formatter = ISTFormatter(fmt="%(asctime)s  %(message)s")
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
 
@@ -52,6 +50,10 @@ def setup_logging(level: int = logging.INFO) -> None:
     root.setLevel(level)
     root.handlers.clear()
     root.addHandler(handler)
+
+    # httpx logs every HTTP request at INFO — silence to WARNING to keep the
+    # agent trace readable
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 class _Span:
@@ -61,27 +63,32 @@ class _Span:
     error: str = ""
 
 
+TOTAL_TOOLS = 5
+
+
 @asynccontextmanager
 async def tool_span(
     trace: list[ToolTrace],
     name: str,
     input_summary: str = "",
+    step: int = 0,
 ) -> AsyncGenerator[_Span, None]:
     """Times a tool, logs start/end, appends a ToolTrace entry."""
     span = _Span()
     t0 = time.perf_counter()
+    label = f"[{step}/{TOTAL_TOOLS}] {name:<22}" if step else f"[{name}]"
     try:
         yield span
     except Exception as exc:
         span.error = str(exc)
         span.used_fallback = True
         ms = round((time.perf_counter() - t0) * 1000, 1)
-        _span_logger.error(f"[{name}] ERROR: {exc} ({ms}ms)")
+        _span_logger.error(f"  {label}  ERROR: {exc}  ({ms}ms)")
         raise
     finally:
         ms = round((time.perf_counter() - t0) * 1000, 1)
         if not span.error:
-            _span_logger.info(f"[{name}] {span.output} ({ms}ms)")
+            _span_logger.info(f"  {label}  {span.output}  ({ms}ms)")
         trace.append(ToolTrace(
             tool_name=name,
             input_summary=input_summary,
