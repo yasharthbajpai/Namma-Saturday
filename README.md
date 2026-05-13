@@ -25,31 +25,7 @@
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    User(["Browser"])
-    FE["React Frontend\nVercel · Tailwind CSS v4"]
-    BE["FastAPI Backend\nRailway · Python 3.12"]
-
-    subgraph pipeline ["Agent Pipeline"]
-        T1["parse_preferences\nTool 1 · deterministic"]
-        T2["get_options\nTool 2 · Places + fallback"]
-        T3["filter_options\nTool 3 · scoring + budget"]
-        T4["build_itinerary\nTool 4 · Claude + fallback"]
-    end
-
-    Places[["Google Places API\nText Search (New)"]]
-    Bedrock[["AWS Bedrock\nClaude Sonnet 4.6"]]
-
-    User -->|HTTP + SSE| FE
-    FE -->|POST /api/plan/stream| BE
-    BE --> T1
-    T1 --> T2
-    T2 --> T3
-    T3 --> T4
-    T2 -..->|searchText| Places
-    T4 -..->|invokeModel| Bedrock
-```
+![Architecture](./docs/architecture.png)
 
 ---
 
