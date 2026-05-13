@@ -34,10 +34,12 @@ class GooglePlacesError(Exception):
     pass
 
 
-def _maps_url(place_id: str) -> str:
+def _maps_url(place_id: str, name: str = "") -> str:
     if not place_id:
         return ""
-    return f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+    from urllib.parse import quote_plus
+    q = quote_plus(name) if name else quote_plus(f"place_id:{place_id}")
+    return f"https://www.google.com/maps/search/?api=1&query={q}&query_place_id={place_id}"
 
 
 def _normalise_place(raw: dict) -> dict:
@@ -59,7 +61,7 @@ def _normalise_place(raw: dict) -> dict:
         "price_level": price_level,
         "address": raw.get("formattedAddress", ""),
         "place_id": place_id,
-        "maps_url": _maps_url(place_id),
+        "maps_url": _maps_url(place_id, name),
         "open_now": open_now,
     }
 
