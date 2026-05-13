@@ -25,8 +25,11 @@ The tool pipeline is designed so that AI only owns the narrative layer (Tool 4).
 
 ---
 
-![Architecture](./docs/architecture.png)
-![High Level Design](./docs/hld.png)
+## Architecture
+
+### Flow Diagram
+
+![Flow Diagram](./docs/flow%20diagram.png)
 
 ### File Structure
 
@@ -159,3 +162,9 @@ Open [http://localhost:5173](http://localhost:5173).
 - The agent **never crashes** — every failure path either uses a fallback or returns a graceful error structure with the trace populated, so the UI always has something to show.
 - Tools 1 and 3 are pure Python — fast, deterministic, and easy to test. Only Tools 2 and 4 hit external services.
 - Budget math and constraint filtering are deterministic code, not LLM — Claude only owns narrative and time-logical ordering.
+
+---
+
+## High Level Design
+
+![High Level Design](./docs/hld.png)
