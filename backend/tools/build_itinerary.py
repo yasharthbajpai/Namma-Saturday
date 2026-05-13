@@ -50,7 +50,8 @@ Return ONLY a valid JSON object in this exact shape:
       "activity": "string (what to do there, 1 sentence)",
       "duration_minutes": 60,
       "estimated_cost": 0,
-      "reasoning": "string (why this fits the user — mention mood, interest, or trade-off)"
+      "reasoning": "string (why this fits the user — mention mood, interest, or trade-off)",
+      "maps_url": "copy the maps_url from the candidate exactly, or empty string if none"
     }}
   ],
   "summary": "1-2 sentence overall pitch for the day",
@@ -91,7 +92,7 @@ def _candidates_block(approved: list, borderline: list) -> str:
         return "Candidate places: none."
 
     def _fmt(p):
-        line = f"- {p.name} (types: {', '.join(p.types[:3]) or 'n/a'}, rating: {p.rating or 'n/a'}, est_cost: {int(p.estimated_cost)}, score: {round(p.score, 1)})"
+        line = f"- {p.name} (types: {', '.join(p.types[:3]) or 'n/a'}, rating: {p.rating or 'n/a'}, est_cost: {int(p.estimated_cost)}, score: {round(p.score, 1)}, maps_url: {p.maps_url or 'n/a'})"
         if p.trade_off:
             line += f"\n  trade_off: {p.trade_off}"
         return line
@@ -213,6 +214,7 @@ async def build_itinerary(filter_result: dict, prefs: ParsedPreferences) -> dict
                 duration_minutes=int(it.get("duration_minutes", 60)),
                 estimated_cost=float(it.get("estimated_cost", 0) or 0),
                 reasoning=str(it.get("reasoning", "")),
+                maps_url=str(it.get("maps_url", "") or ""),
             ))
         except (ValueError, TypeError):
             continue

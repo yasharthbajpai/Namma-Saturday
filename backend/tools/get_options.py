@@ -100,6 +100,8 @@ async def get_options(prefs: ParsedPreferences) -> tuple[list[Place], bool]:
                 user_rating_count=raw.get("user_rating_count"),
                 price_level=raw.get("price_level"),
                 address=raw.get("address", ""),
+                place_id=raw.get("place_id", ""),
+                maps_url=raw.get("maps_url", ""),
                 estimated_cost=_estimate_cost(raw.get("price_level"), raw.get("types", [])),
                 source="google_places",
             )
